@@ -135,15 +135,15 @@ async def lock_vehicle(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        # The library uses operation_password for remote actions
-        if request.pin:
-            client.operation_password = request.pin
-        elif os.getenv("LEAPMOTOR_PIN"):
-            client.operation_password = os.getenv("LEAPMOTOR_PIN")
+        # Ensure PIN is set
+        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
+        if pin:
+            client.operation_password = pin
             
         client.lock_vehicle(vehicles[0].vin)
         return {"status": "success", "message": "Vehicle locked"}
     except Exception as e:
+        print(f"ERROR Lock: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/unlock")
@@ -153,14 +153,14 @@ async def unlock_vehicle(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        if request.pin:
-            client.operation_password = request.pin
-        elif os.getenv("LEAPMOTOR_PIN"):
-            client.operation_password = os.getenv("LEAPMOTOR_PIN")
+        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
+        if pin:
+            client.operation_password = pin
             
         client.unlock_vehicle(vehicles[0].vin)
         return {"status": "success", "message": "Vehicle unlocked"}
     except Exception as e:
+        print(f"ERROR Unlock: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/open-trunk")
@@ -170,14 +170,14 @@ async def open_trunk(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        if request.pin:
-            client.operation_password = request.pin
-        elif os.getenv("LEAPMOTOR_PIN"):
-            client.operation_password = os.getenv("LEAPMOTOR_PIN")
+        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
+        if pin:
+            client.operation_password = pin
             
         client.open_trunk(vehicles[0].vin)
         return {"status": "success", "message": "Trunk opened"}
     except Exception as e:
+        print(f"ERROR Trunk: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/open-windows")
@@ -187,14 +187,14 @@ async def open_windows(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        if request.pin:
-            client.operation_password = request.pin
-        elif os.getenv("LEAPMOTOR_PIN"):
-            client.operation_password = os.getenv("LEAPMOTOR_PIN")
+        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
+        if pin:
+            client.operation_password = pin
             
         client.open_windows(vehicles[0].vin)
         return {"status": "success", "message": "Windows opened"}
     except Exception as e:
+        print(f"ERROR Open Windows: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/close-windows")
@@ -204,14 +204,14 @@ async def close_windows(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        if request.pin:
-            client.operation_password = request.pin
-        elif os.getenv("LEAPMOTOR_PIN"):
-            client.operation_password = os.getenv("LEAPMOTOR_PIN")
+        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
+        if pin:
+            client.operation_password = pin
             
         client.close_windows(vehicles[0].vin)
         return {"status": "success", "message": "Windows closed"}
     except Exception as e:
+        print(f"ERROR Close Windows: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
