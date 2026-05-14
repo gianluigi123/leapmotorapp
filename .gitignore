@@ -1,0 +1,19 @@
+# Backend
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+backend/certs/*.crt
+backend/certs/*.key
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
