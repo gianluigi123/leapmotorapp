@@ -138,6 +138,9 @@ async def lock_vehicle(request: ActionRequest):
         vehicle = vehicles[0]
         
         # DEBUG: Force the right if it seems missing
+        if vehicle.rights is None:
+            vehicle.rights = []
+            
         if 110 not in vehicle.rights:
             print(f"DEBUG: Manually adding LOCK right (110) to vehicle {vehicle.vin}")
             vehicle.rights.append(110)
