@@ -2,8 +2,6 @@
 backend/.env
 backend/__pycache__/
 backend/*.pyc
-backend/certs/*.crt
-backend/certs/*.key
 
 # Frontend
 frontend/node_modules/
