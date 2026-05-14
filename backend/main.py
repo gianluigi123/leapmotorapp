@@ -11,10 +11,10 @@ load_dotenv()
 
 app = FastAPI()
 
-# Enable CORS for the React frontend
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,38 +24,18 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-# In-memory storage for the client (for this prototype)
+class ActionRequest(BaseModel):
+    pin: str | None = None
+
 client_storage = {}
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
 
-@app.post("/api/login")
-async def login(request: LoginRequest):
-    try:
-        client = LeapmotorApiClient(
-            username=request.username,
-            password=request.password,
-            app_cert_path="certs/app.crt",
-            app_key_path="certs/app.key"
-        )
-        client.login()
-        # In a real app, we'd use a session token or JWT. 
-        # For this prototype, we'll store the client instance temporarily or just verify credentials.
-        # Since the library handles tokens, we can just return success if login() didn't raise.
-        client_storage["current_client"] = client
-        return {"status": "success", "message": "Logged in successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-class ActionRequest(BaseModel):
-    pin: str | None = None
-
 @app.get("/api/status")
 async def get_status():
     if "current_client" not in client_storage:
-        # Try to use .env credentials if not logged in via UI
         username = os.getenv("LEAPMOTOR_USERNAME")
         password = os.getenv("LEAPMOTOR_PASSWORD")
         if username and password:
@@ -69,24 +49,19 @@ async def get_status():
                 client.login()
                 client_storage["current_client"] = client
             except Exception as e:
-                raise HTTPException(status_code=401, detail=f"Auto-login failed: {str(e)}")
+                raise HTTPException(status_code=401, detail=f"Login fallito: {str(e)}")
         else:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise HTTPException(status_code=401, detail="Credenziali mancanti")
     
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
         if not vehicles:
-            return {"status": "error", "message": "No vehicles found"}
+            return {"status": "error", "message": "Nessun veicolo trovato"}
         
-        # Get status for the first vehicle
         vehicle = vehicles[0]
         status = client.get_vehicle_status(vehicle)
         
-        # Debugging: print vehicle object to console
-        print(f"DEBUG Vehicle: {vehicle}")
-        
-        # Fallback for vehicle name
         v_name = vehicle.vehicle_nickname or f"Leapmotor {vehicle.car_type or 'T03'}"
         
         return {
@@ -97,8 +72,6 @@ async def get_status():
             "is_charging": status.battery.is_charging,
             "odometer": status.driving.total_mileage,
             "battery_health": "Ottima",
-            "charging_power": getattr(status.battery, 'charging_power_kw', 0),
-            "charging_time_remaining": getattr(status.battery, 'charge_remain_time', 0),
             "outdoor_temp": getattr(status.climate, 'outdoor_temp', 0),
             "tires": {
                 "fl": getattr(status.tires, 'front_left_bar', 0),
@@ -117,123 +90,20 @@ async def get_status():
                 "left_rear": status.doors.lbcm_left_rear_door_status == 1,
                 "right_rear": status.doors.rbcm_right_rear_door_status == 1,
                 "trunk": status.doors.bbcm_back_door_status == 1
-            },
-            "windows": {
-                "driver": status.windows.driver_window_status,
-                "left_rear": status.windows.left_rear_window_status,
-                "right_front": status.windows.right_front_window_status,
-                "right_rear": status.windows.right_rear_window_status
             }
         }
     except Exception as e:
+        # In caso di errore di sessione, svuotiamo il client per forzare il re-login al prossimo giro
+        client_storage.clear()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/lock")
-async def lock_vehicle(request: ActionRequest):
-    if "current_client" not in client_storage:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    client = client_storage["current_client"]
-    try:
-        vehicles = client.get_vehicle_list()
-        vehicle = vehicles[0]
-        
-        # DEBUG: Force the right if it seems missing
-        if vehicle.rights is None:
-            vehicle.rights = []
-            
-        if 110 not in vehicle.rights:
-            print(f"DEBUG: Manually adding LOCK right (110) to vehicle {vehicle.vin}")
-            vehicle.rights.append(110)
-
-        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
-        if pin:
-            client.operation_password = pin
-            
-        print(f"DEBUG: Attempting LOCK for VIN {vehicle.vin}")
-        client.lock_vehicle(vehicle.vin)
-        return {"status": "success", "message": "Vehicle locked"}
-    except Exception as e:
-        print(f"CRITICAL ERROR Lock: {str(e)}")
-        # If it's a specific API error, try to extract more info
-        detail = str(e)
-        if "code" in detail:
-            detail = f"Leapmotor Error {detail}"
-        raise HTTPException(status_code=500, detail=detail)
-
-@app.post("/api/unlock")
-async def unlock_vehicle(request: ActionRequest):
-    if "current_client" not in client_storage:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    client = client_storage["current_client"]
-    try:
-        vehicles = client.get_vehicle_list()
-        vehicle = vehicles[0]
-        
-        if 110 not in vehicle.rights:
-            print(f"DEBUG: Manually adding LOCK right (110) to vehicle {vehicle.vin}")
-            vehicle.rights.append(110)
-
-        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
-        if pin:
-            client.operation_password = pin
-            
-        print(f"DEBUG: Attempting UNLOCK for VIN {vehicle.vin}")
-        client.unlock_vehicle(vehicle.vin)
-        return {"status": "success", "message": "Vehicle unlocked"}
-    except Exception as e:
-        print(f"CRITICAL ERROR Unlock: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/open-trunk")
-async def open_trunk(request: ActionRequest):
-    if "current_client" not in client_storage:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    client = client_storage["current_client"]
-    try:
-        vehicles = client.get_vehicle_list()
-        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
-        if pin:
-            client.operation_password = pin
-            
-        client.open_trunk(vehicles[0].vin)
-        return {"status": "success", "message": "Trunk opened"}
-    except Exception as e:
-        print(f"ERROR Trunk: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/open-windows")
-async def open_windows(request: ActionRequest):
-    if "current_client" not in client_storage:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    client = client_storage["current_client"]
-    try:
-        vehicles = client.get_vehicle_list()
-        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
-        if pin:
-            client.operation_password = pin
-            
-        client.open_windows(vehicles[0].vin)
-        return {"status": "success", "message": "Windows opened"}
-    except Exception as e:
-        print(f"ERROR Open Windows: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/close-windows")
-async def close_windows(request: ActionRequest):
-    if "current_client" not in client_storage:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    client = client_storage["current_client"]
-    try:
-        vehicles = client.get_vehicle_list()
-        pin = request.pin or os.getenv("LEAPMOTOR_PIN")
-        if pin:
-            client.operation_password = pin
-            
-        client.close_windows(vehicles[0].vin)
-        return {"status": "success", "message": "Windows closed"}
-    except Exception as e:
-        print(f"ERROR Close Windows: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Placeholder per comandi remoti (disabilitati per ora a causa dei blocchi lato server)
+@app.post("/api/{action}")
+async def proxy_action(action: str, request: ActionRequest):
+    raise HTTPException(
+        status_code=403, 
+        detail="Comando momentaneamente non disponibile per restrizioni di sicurezza Leapmotor."
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
