@@ -1,17 +1,18 @@
 import os
-from fastapi import FastAPI, HTTPException
+import uuid
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from leapmotor_api import LeapmotorApiClient
 import uvicorn
 
-# Load environment variables
+# Caricamento variabili d'ambiente
 load_dotenv()
 
 app = FastAPI()
 
-# Enable CORS
+# Configurazione CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,34 +27,39 @@ class LoginRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     pin: str | None = None
+    value: int | None = None
 
-client_storage = {}
+# Storage in memoria: { session_id: client_instance }
+# In produzione andrebbe usato un database o Redis con scadenza sessione
+session_storage = {}
 
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok"}
+def get_client(session_id: str = Header(None)):
+    if not session_id or session_id not in session_storage:
+        raise HTTPException(status_code=401, detail="Sessione non valida o scaduta. Effettua il login.")
+    return session_storage[session_id]
+
+@app.post("/api/login")
+async def login(request: LoginRequest):
+    try:
+        client = LeapmotorApiClient(
+            username=request.username,
+            password=request.password,
+            app_cert_path="certs/app.crt",
+            app_key_path="certs/app.key"
+        )
+        client.login()
+        
+        # Genera un ID sessione unico
+        session_id = str(uuid.uuid4())
+        session_storage[session_id] = client
+        
+        return {"session_id": session_id, "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Login fallito: {str(e)}")
 
 @app.get("/api/status")
-async def get_status():
-    if "current_client" not in client_storage:
-        username = os.getenv("LEAPMOTOR_USERNAME")
-        password = os.getenv("LEAPMOTOR_PASSWORD")
-        if username and password:
-            try:
-                client = LeapmotorApiClient(
-                    username=username,
-                    password=password,
-                    app_cert_path="certs/app.crt",
-                    app_key_path="certs/app.key"
-                )
-                client.login()
-                client_storage["current_client"] = client
-            except Exception as e:
-                raise HTTPException(status_code=401, detail=f"Login fallito: {str(e)}")
-        else:
-            raise HTTPException(status_code=401, detail="Credenziali mancanti")
-    
-    client = client_storage["current_client"]
+async def get_status(session_id: str = Header(None)):
+    client = get_client(session_id)
     try:
         vehicles = client.get_vehicle_list()
         if not vehicles:
@@ -80,10 +86,6 @@ async def get_status():
                 "rr": getattr(status.tires, 'rear_right_bar', 0),
                 "all_ok": getattr(status.tires, 'all_ok', True)
             },
-            "location": {
-                "lat": getattr(status.location, 'latitude', 0),
-                "lon": getattr(status.location, 'longitude', 0)
-            },
             "doors": {
                 "is_locked": status.doors.is_locked,
                 "driver": status.doors.lbcm_driver_door_status == 1, 
@@ -93,17 +95,49 @@ async def get_status():
             }
         }
     except Exception as e:
-        # In caso di errore di sessione, svuotiamo il client per forzare il re-login al prossimo giro
-        client_storage.clear()
-        raise HTTPException(status_code=500, detail=str(e))
+        if session_id in session_storage:
+            del session_storage[session_id]
+        raise HTTPException(status_code=500, detail=f"Errore sessione: {str(e)}")
 
-# Placeholder per comandi remoti (disabilitati per ora a causa dei blocchi lato server)
 @app.post("/api/{action}")
-async def proxy_action(action: str, request: ActionRequest):
-    raise HTTPException(
-        status_code=403, 
-        detail="Comando momentaneamente non disponibile per restrizioni di sicurezza Leapmotor."
-    )
+async def perform_action(action: str, request: ActionRequest, session_id: str = Header(None)):
+    client = get_client(session_id)
+    try:
+        vehicles = client.get_vehicle_list()
+        if not vehicles:
+            raise HTTPException(status_code=404, detail="Veicolo non trovato")
+        
+        vin = vehicles[0].vin
+        
+        if request.pin:
+            client.operation_password = request.pin
+
+        if action == "lock":
+            client.lock_vehicle(vin)
+        elif action == "unlock":
+            client.unlock_vehicle(vin)
+        elif action == "open-trunk":
+            client.open_trunk(vin)
+        elif action == "close-trunk":
+            client.close_trunk(vin)
+        elif action == "open-windows":
+            client.open_windows(vin)
+        elif action == "close-windows":
+            client.close_windows(vin)
+        elif action == "ac-on":
+            client.ac_switch(vin, True)
+        elif action == "ac-off":
+            client.ac_switch(vin, False)
+        elif action == "start-charging":
+            client.start_charging(vin)
+        elif action == "stop-charging":
+            client.stop_charging(vin)
+        else:
+            raise HTTPException(status_code=400, detail=f"Azione '{action}' non riconosciuta")
+
+        return {"status": "success", "message": f"Comando '{action}' inviato"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

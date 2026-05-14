@@ -3,10 +3,10 @@ import axios from 'axios'
 import { 
   Zap, RefreshCcw, Car, Navigation, ShieldCheck, 
   Battery as BatteryIcon, Lock, Unlock, 
-  Package, Activity, Cpu, Wind
+  Package, Activity, Cpu, Wind, LogOut
 } from 'lucide-react'
 import carImage from '../assets/car/T03.png'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { API_BASE_URL } from '../config'
 
 interface VehicleStatus {
@@ -23,44 +23,70 @@ interface VehicleStatus {
     right_rear: boolean;
     trunk: boolean;
   };
-  windows: {
-    driver: number;
-    left_rear: number;
-    right_front: number;
-    right_rear: number;
-  };
 }
 
 function Dashboard() {
   const [status, setStatus] = useState<VehicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const getSessionId = () => localStorage.getItem('session_id');
+
+  const handleUnauthorized = () => {
+    localStorage.removeItem('session_id');
+    navigate('/login');
+  };
 
   const fetchStatus = async () => {
+    const sessionId = getSessionId();
+    if (!sessionId) return handleUnauthorized();
+
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/status`);
+      const response = await axios.get(`${API_BASE_URL}/api/status`, {
+        headers: { 'session-id': sessionId }
+      });
       setStatus(response.data);
     } catch (err: any) {
-      console.error(err.response?.data?.detail || 'Connessione al server fallita.');
+      if (err.response?.status === 401) {
+        handleUnauthorized();
+      } else {
+        console.error(err.response?.data?.detail || 'Connessione al server fallita.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const performAction = async (action: string) => {
+    const sessionId = getSessionId();
+    if (!sessionId) return handleUnauthorized();
+
     const pin = window.prompt("Inserisci il tuo PIN di sicurezza (Password Operativa):");
-    if (pin === null) return; // Utente ha annullato
+    if (pin === null) return;
 
     setActionLoading(action);
     try {
-      await axios.post(`${API_BASE_URL}/api/${action}`, { pin: pin });
+      await axios.post(`${API_BASE_URL}/api/${action}`, 
+        { pin: pin },
+        { headers: { 'session-id': sessionId } }
+      );
       fetchStatus();
     } catch (err: any) {
-      alert(`Errore: ${err.response?.data?.detail || 'Operazione fallita'}`);
+      if (err.response?.status === 401) {
+        handleUnauthorized();
+      } else {
+        alert(`Errore: ${err.response?.data?.detail || 'Operazione fallita'}`);
+      }
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('session_id');
+    navigate('/login');
   };
 
   useEffect(() => {
@@ -68,9 +94,9 @@ function Dashboard() {
   }, []);
 
   const getSocColor = (soc: number) => {
-    if (soc > 70) return '#059669'; // Emerald-600
-    if (soc > 25) return '#0284c7'; // Sky-600
-    return '#e11d48'; // Rose-600
+    if (soc > 70) return '#059669';
+    if (soc > 25) return '#0284c7';
+    return '#e11d48';
   };
 
   return (
@@ -94,13 +120,13 @@ function Dashboard() {
         </div>
         
         <div className="flex gap-4">
-          <Link 
-            to="/connect"
-            className="p-5 bg-white border-2 border-emerald-50 shadow-lg rounded-2xl hover:bg-emerald-50 transition-all active:scale-90 flex items-center gap-2"
+          <button 
+            onClick={logout}
+            className="p-5 bg-white border-2 border-rose-50 shadow-lg rounded-2xl hover:bg-rose-50 transition-all active:scale-90"
+            title="Esci"
           >
-            <Cpu className="w-6 h-6 text-[#059669]" />
-            <span className="font-bold text-[#059669] hidden md:inline">LP Connect</span>
-          </Link>
+            <LogOut className="w-6 h-6 text-rose-600" />
+          </button>
           <button 
             onClick={fetchStatus}
             disabled={loading}
@@ -161,7 +187,7 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* ACTION BUTTONS - RESTORED TO SINGLE ROW */}
+              {/* ACTION BUTTONS */}
               <div className="grid grid-cols-3 gap-4 md:gap-6">
                 <button 
                   onClick={() => performAction('unlock')}
@@ -194,23 +220,33 @@ function Dashboard() {
                 </button>
 
                 <button 
-                  onClick={() => performAction('open-windows')}
+                  onClick={() => performAction('ac-on')}
                   disabled={!!actionLoading}
-                  style={{ backgroundColor: '#059669' }}
-                  className="flex flex-col items-center justify-center p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-emerald-900/20 border-b-4 border-[#047857] active:border-b-0 active:translate-y-1 transition-all group min-h-[120px] md:min-h-[140px]"
+                  style={{ backgroundColor: '#0ea5e9' }}
+                  className="flex flex-col items-center justify-center p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-sky-900/20 border-b-4 border-[#0369a1] active:border-b-0 active:translate-y-1 transition-all group min-h-[120px] md:min-h-[140px]"
                 >
                   <Wind className="w-8 h-8 md:w-10 md:h-10 text-white mb-3 md:mb-4 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm md:text-lg font-black italic uppercase tracking-tighter text-white leading-none text-center">Windows Open</span>
+                  <span className="text-sm md:text-lg font-black italic uppercase tracking-tighter text-white leading-none text-center">AC ON</span>
                 </button>
 
                 <button 
-                  onClick={() => performAction('close-windows')}
+                  onClick={() => performAction('ac-off')}
                   disabled={!!actionLoading}
-                  style={{ backgroundColor: '#065f46' }}
-                  className="flex flex-col items-center justify-center p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-emerald-900/20 border-b-4 border-[#064e3b] active:border-b-0 active:translate-y-1 transition-all group min-h-[120px] md:min-h-[140px]"
+                  style={{ backgroundColor: '#475569' }}
+                  className="flex flex-col items-center justify-center p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-900/20 border-b-4 border-[#334155] active:border-b-0 active:translate-y-1 transition-all group min-h-[120px] md:min-h-[140px]"
                 >
-                  <ShieldCheck className="w-8 h-8 md:w-10 md:h-10 text-white mb-3 md:mb-4 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm md:text-lg font-black italic uppercase tracking-tighter text-white leading-none text-center">Windows Close</span>
+                  <Activity className="w-8 h-8 md:w-10 md:h-10 text-white mb-3 md:mb-4 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm md:text-lg font-black italic uppercase tracking-tighter text-white leading-none text-center">AC OFF</span>
+                </button>
+
+                <button 
+                  onClick={() => performAction('start-charging')}
+                  disabled={!!actionLoading}
+                  style={{ backgroundColor: '#10b981' }}
+                  className="flex flex-col items-center justify-center p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-emerald-900/20 border-b-4 border-[#059669] active:border-b-0 active:translate-y-1 transition-all group min-h-[120px] md:min-h-[140px]"
+                >
+                  <Zap className="w-8 h-8 md:w-10 md:h-10 text-white mb-3 md:mb-4 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm md:text-lg font-black italic uppercase tracking-tighter text-white leading-none text-center">Charge ON</span>
                 </button>
               </div>
             </div>
