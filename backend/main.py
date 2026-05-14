@@ -135,16 +135,27 @@ async def lock_vehicle(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
-        # Ensure PIN is set
+        vehicle = vehicles[0]
+        
+        # DEBUG: Force the right if it seems missing
+        if 110 not in vehicle.rights:
+            print(f"DEBUG: Manually adding LOCK right (110) to vehicle {vehicle.vin}")
+            vehicle.rights.append(110)
+
         pin = request.pin or os.getenv("LEAPMOTOR_PIN")
         if pin:
             client.operation_password = pin
             
-        client.lock_vehicle(vehicles[0].vin)
+        print(f"DEBUG: Attempting LOCK for VIN {vehicle.vin}")
+        client.lock_vehicle(vehicle.vin)
         return {"status": "success", "message": "Vehicle locked"}
     except Exception as e:
-        print(f"ERROR Lock: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"CRITICAL ERROR Lock: {str(e)}")
+        # If it's a specific API error, try to extract more info
+        detail = str(e)
+        if "code" in detail:
+            detail = f"Leapmotor Error {detail}"
+        raise HTTPException(status_code=500, detail=detail)
 
 @app.post("/api/unlock")
 async def unlock_vehicle(request: ActionRequest):
@@ -153,14 +164,21 @@ async def unlock_vehicle(request: ActionRequest):
     client = client_storage["current_client"]
     try:
         vehicles = client.get_vehicle_list()
+        vehicle = vehicles[0]
+        
+        if 110 not in vehicle.rights:
+            print(f"DEBUG: Manually adding LOCK right (110) to vehicle {vehicle.vin}")
+            vehicle.rights.append(110)
+
         pin = request.pin or os.getenv("LEAPMOTOR_PIN")
         if pin:
             client.operation_password = pin
             
-        client.unlock_vehicle(vehicles[0].vin)
+        print(f"DEBUG: Attempting UNLOCK for VIN {vehicle.vin}")
+        client.unlock_vehicle(vehicle.vin)
         return {"status": "success", "message": "Vehicle unlocked"}
     except Exception as e:
-        print(f"ERROR Unlock: {str(e)}")
+        print(f"CRITICAL ERROR Unlock: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/open-trunk")
