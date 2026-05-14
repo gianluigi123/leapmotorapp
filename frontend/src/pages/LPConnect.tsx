@@ -48,8 +48,11 @@ function LPConnect() {
   };
 
   const performAction = async (action: string) => {
+    const pin = window.prompt("Inserisci il tuo PIN di sicurezza (Password Operativa):");
+    if (pin === null) return;
+
     try {
-      await axios.post(`${API_BASE_URL}/api/${action}`, {});
+      await axios.post(`${API_BASE_URL}/api/${action}`, { pin: pin });
       fetchStatus();
     } catch (err: any) {
       alert(`Errore: ${err.response?.data?.detail || 'Operazione fallita'}`);
