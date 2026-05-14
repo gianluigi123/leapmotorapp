@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { 
-  Zap, MapPin, RefreshCcw, Car, Navigation, ShieldCheck, 
-  Gauge, Info, Battery as BatteryIcon, Lock, Unlock, 
-  Package, LayoutPanelLeft, DoorOpen, Activity, Cpu, Wind
+  Zap, RefreshCcw, Car, Navigation, ShieldCheck, 
+  Battery as BatteryIcon, Lock, Unlock, 
+  Package, Activity, Cpu, Wind
 } from 'lucide-react'
 import carImage from '../assets/car/T03.png'
 import { Link } from 'react-router-dom'
@@ -35,16 +35,14 @@ function Dashboard() {
   const [status, setStatus] = useState<VehicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     setLoading(true);
-    setError(null);
     try {
       const response = await axios.get(`${API_BASE_URL}/api/status`);
       setStatus(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Connessione al server fallita.');
+      console.error(err.response?.data?.detail || 'Connessione al server fallita.');
     } finally {
       setLoading(false);
     }

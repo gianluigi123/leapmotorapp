@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { 
-  Zap, MapPin, RefreshCcw, Car, Navigation, ShieldCheck, 
-  Battery as BatteryIcon, Lock, Unlock, Package,
-  Activity, Cpu, Thermometer, Wind, Map, Gauge, LayoutPanelLeft
+  MapPin, RefreshCcw, Navigation, ShieldCheck, 
+  Lock, Unlock, Package,
+  Thermometer, Wind, Map, Gauge, LayoutPanelLeft
 } from 'lucide-react'
 import carImage from '../assets/car/leapmotor-t03.jpg'
 import { Link } from 'react-router-dom'
@@ -34,31 +34,25 @@ interface VehicleStatus {
 function LPConnect() {
   const [status, setStatus] = useState<VehicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     setLoading(true);
-    setError(null);
     try {
       const response = await axios.get(`${API_BASE_URL}/api/status`);
       setStatus(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Connessione al server fallita.');
+      console.error(err.response?.data?.detail || 'Connessione al server fallita.');
     } finally {
       setLoading(false);
     }
   };
 
   const performAction = async (action: string) => {
-    setActionLoading(action);
     try {
       await axios.post(`${API_BASE_URL}/api/${action}`, {});
       fetchStatus();
     } catch (err: any) {
       alert(`Errore: ${err.response?.data?.detail || 'Operazione fallita'}`);
-    } finally {
-      setActionLoading(null);
     }
   };
 
